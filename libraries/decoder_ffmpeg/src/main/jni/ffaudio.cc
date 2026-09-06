@@ -418,6 +418,19 @@ static int decodePacket(AudioJniContext *jniContext, AVPacket *packet,
                                                ? &frame->ch_layout
                                                : &context->ch_layout;
     const int channelCount = channelLayout->nb_channels;
+    // AudioTrack has no channel mask for more than 8 channels, so any decoded
+    // layout with more channels (e.g. AV3A, which decodes to 10 channels of
+    // sound-bed) is downmixed to a standard 7.1 (8-channel) layout via swresample
+    // before it reaches the sink.
+    constexpr int kMaxOutputChannelCount = 8;
+    const bool needsDownmix = channelCount > kMaxOutputChannelCount;
+    AVChannelLayout downmixLayout{};
+    if (needsDownmix) {
+      av_channel_layout_default(&downmixLayout, kMaxOutputChannelCount);
+    }
+    const AVChannelLayout *targetLayout =
+        needsDownmix ? &downmixLayout : channelLayout;
+    const int outChannelCount = needsDownmix ? kMaxOutputChannelCount : channelCount;
     const int sampleRate =
         frame->sample_rate > 0 ? frame->sample_rate : context->sample_rate;
     const int sampleCount = frame->nb_samples;
@@ -436,10 +449,10 @@ static int decodePacket(AudioJniContext *jniContext, AVPacket *packet,
           sampleFormat, channelCount, sampleRate, sampleCount);
       return AUDIO_DECODER_ERROR_OTHER;
     }
-    jniContext->outputChannelCount = channelCount;
+    jniContext->outputChannelCount = outChannelCount;
     jniContext->outputSampleRate = outSampleRate;
 
-    if (!av_sample_fmt_is_planar(sampleFormat) &&
+    if (!needsDownmix && !av_sample_fmt_is_planar(sampleFormat) &&
         sampleFormat == context->request_sample_fmt &&
         (jniContext->targetSampleRate == 0 ||
          jniContext->targetSampleRate == sampleRate)) {
@@ -455,27 +468,29 @@ static int decodePacket(AudioJniContext *jniContext, AVPacket *packet,
       continue;
     }
     AVSampleFormat outputFormat = context->request_sample_fmt;
-    if (!jniContext->resampler.matches(channelLayout, channelLayout,
+    if (!jniContext->resampler.matches(channelLayout, targetLayout,
                                        sampleFormat, outputFormat, sampleRate,
                                        outSampleRate)) {
-      result = jniContext->resampler.configure(channelLayout, channelLayout,
+      result = jniContext->resampler.configure(channelLayout, targetLayout,
                                                sampleFormat, outputFormat,
                                                sampleRate, outSampleRate);
       if (result < 0) {
         logError("swr_alloc_set_opts2", result);
+        av_channel_layout_uninit(&downmixLayout);
         return transformError(result);
       }
     }
+    av_channel_layout_uninit(&downmixLayout);
     SwrContext *resampleContext = jniContext->resampler.context;
     int outSampleSize = av_get_bytes_per_sample(outputFormat);
     int outSamples = swr_get_out_samples(resampleContext, sampleCount);
     if (outSampleSize <= 0 || outSamples < 0) {
       LOGE("Invalid resample sizing: sampleSize=%d channels=%d samples=%d.",
-           outSampleSize, channelCount, outSamples);
+           outSampleSize, outChannelCount, outSamples);
       return AUDIO_DECODER_ERROR_OTHER;
     }
     int64_t bufferOutSize64 =
-        static_cast<int64_t>(outSampleSize) * channelCount * outSamples;
+        static_cast<int64_t>(outSampleSize) * outChannelCount * outSamples;
     if (bufferOutSize64 > INT_MAX) {
       LOGE("Resample output buffer too large: %lld.",
            (long long)bufferOutSize64);
@@ -493,7 +508,7 @@ static int decodePacket(AudioJniContext *jniContext, AVPacket *packet,
     }
 
     const int64_t writtenSize =
-        static_cast<int64_t>(outSampleSize) * channelCount * result;
+        static_cast<int64_t>(outSampleSize) * outChannelCount * result;
     if (writtenSize > INT_MAX ||
         !output.commit(static_cast<int>(writtenSize))) {
       return AUDIO_DECODER_ERROR_OTHER;
@@ -583,6 +598,16 @@ Java_androidx_media3_decoder_ffmpeg_FfmpegAudioDecoder_ffmpegInitialize(
   }
 
   updateTargetSampleRate(jniContext.get());
+  // AudioTrack has no channel mask for more than 8 channels, so any decoded layout with more
+  // channels (e.g. AV3A, which decodes to 10 channels of sound-bed) is downmixed to 8 channels by
+  // decodePacket. Record the capped count here so getOutputFormat() — which may run before the
+  // first frame is decoded — reports the downmixed channel count instead of the raw decoder
+  // channel count that AudioTrack cannot represent (otherwise the sink is configured for >8
+  // channels and the track silently fails to start).
+  constexpr int kMaxOutputChannelCount = 8;
+  if (config.rawChannelCount > kMaxOutputChannelCount) {
+    jniContext->outputChannelCount = kMaxOutputChannelCount;
+  }
   return reinterpret_cast<jlong>(jniContext.release());
 }
 

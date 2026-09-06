@@ -52,6 +52,14 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
 
   private static final String TAG = "FfmpegAudioRenderer";
 
+  /**
+   * Maximum number of channels the Android {@link AudioSink} (AudioTrack) can output. Android has no
+   * channel mask for more than 8 channels, so any decoded audio with more channels (e.g. AV3A which
+   * decodes to 10 channels) is downmixed to this count by the native decoder before being handed to
+   * the sink.
+   */
+  private static final int MAX_OUTPUT_CHANNEL_COUNT = 8;
+
   /** The number of input and output buffers. */
   private static final int NUM_BUFFERS = 16;
 
@@ -143,9 +151,16 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
     String mimeType = checkNotNull(format.sampleMimeType);
     if (!FfmpegLibrary.isAvailable() || !MimeTypes.isAudio(mimeType)) {
       return C.FORMAT_UNSUPPORTED_TYPE;
-    } else if (!FfmpegLibrary.supportsFormat(format)
-        || (!sinkSupportsFormat(format, C.ENCODING_PCM_16BIT)
-            && !sinkSupportsFormat(format, C.ENCODING_PCM_FLOAT))) {
+    } else if (!FfmpegLibrary.supportsFormat(format)) {
+      return C.FORMAT_UNSUPPORTED_SUBTYPE;
+    }
+    // The native decoder downmixes any input with more than MAX_OUTPUT_CHANNEL_COUNT channels down to
+    // MAX_OUTPUT_CHANNEL_COUNT (see getPcmOutputFormat), so the sink is queried against the downmixed
+    // channel count rather than the raw input channel count (e.g. AV3A decodes to 10 channels, which
+    // AudioTrack cannot output).
+    boolean sinkSupportsPcm16 = sinkSupportsFormat(format, C.ENCODING_PCM_16BIT);
+    boolean sinkSupportsFloat = sinkSupportsFormat(format, C.ENCODING_PCM_FLOAT);
+    if (!sinkSupportsPcm16 && !sinkSupportsFloat) {
       return C.FORMAT_UNSUPPORTED_SUBTYPE;
     } else if (format.cryptoType != C.CRYPTO_TYPE_NONE) {
       return C.FORMAT_UNSUPPORTED_DRM;
@@ -245,7 +260,14 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
   }
 
   private static Format getPcmOutputFormat(Format inputFormat, @C.PcmEncoding int pcmEncoding) {
+    int channelCount = inputFormat.channelCount;
+    if (channelCount != Format.NO_VALUE && channelCount > MAX_OUTPUT_CHANNEL_COUNT) {
+      // The native decoder downmixes layouts with more channels than AudioTrack supports (e.g. AV3A,
+      // which decodes to 10 channels) down to MAX_OUTPUT_CHANNEL_COUNT, so the sink must be queried
+      // against the downmixed channel count.
+      channelCount = MAX_OUTPUT_CHANNEL_COUNT;
+    }
     return Util.getPcmFormat(
-        pcmEncoding, inputFormat.channelCount, FfmpegLibrary.getPcmOutputSampleRate(inputFormat));
+        pcmEncoding, channelCount, FfmpegLibrary.getPcmOutputSampleRate(inputFormat));
   }
 }

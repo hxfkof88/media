@@ -33,6 +33,24 @@ android {
   sourceSets { getByName("androidTest").assets.directories.add("../test_data/src/test/assets") }
 }
 
+// mytv 临时补丁：让本模块产出的 AAR 不带 FFmpeg 七件套（libav* / libsw*）。
+// mytv 的 :mpvplayer 自带与 libmpv.so 同源的 libav*，且 ABI 与本模块预编译的
+// FFmpeg 兼容，但二进制内容不同（arm64-v8a 全部 md5 不同，armeabi-v7a 完全一致）。
+// x86_64 设备经 arm64 转译运行时，libmpv.so 会按需 dlopen libav*，与 libmpv.so
+// 不同源那份会闪崩。libffmpegJNI.so 仍保留，它动态链接外部 libav*。
+//
+// 此改动只影响 mytv 消费方（去重冲突），不影响 fork 自身构建 —— CMake 编译时
+// 仍按 IMPORTED 引用 jniLibs 源里的 .so，packaging excludes 仅在 AAR 打包阶段生效。
+android.packaging.jniLibs.excludes += setOf(
+    "**/libavcodec.so",
+    "**/libavdevice.so",
+    "**/libavfilter.so",
+    "**/libavformat.so",
+    "**/libavutil.so",
+    "**/libswresample.so",
+    "**/libswscale.so",
+)
+
 // Configure the native build only if ffmpeg is present to avoid gradle sync
 // failures if ffmpeg hasn't been built according to the README instructions.
 if (project.file("src/main/ffmpeg/include/libavcodec/avcodec.h").exists()) {
