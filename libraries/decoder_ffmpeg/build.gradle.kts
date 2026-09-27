@@ -33,13 +33,16 @@ android {
   sourceSets { getByName("androidTest").assets.directories.add("../test_data/src/test/assets") }
 }
 
-// mytv 临时补丁：让本模块产出的 AAR 不带 FFmpeg 七件套（libav* / libsw*）。
-// mytv 的 :mpvplayer 自带与 libmpv.so 同源的 libav*，且 ABI 与本模块预编译的
-// FFmpeg 兼容，但二进制内容不同（arm64-v8a 全部 md5 不同，armeabi-v7a 完全一致）。
-// x86_64 设备经 arm64 转译运行时，libmpv.so 会按需 dlopen libav*，与 libmpv.so
-// 不同源那份会闪崩。libffmpegJNI.so 仍保留，它动态链接外部 libav*。
+// 让本模块产出的 AAR 不带 FFmpeg 七件套（libav* / libsw*），落实 FongMi 式
+// 「APK 内仅一份 libav*」的单一 ffmpeg 机制：mytv 的 :mpvplayer 自带与
+// libmpv.so 同源的 libav*，本模块预编译的 libav* 来自 bundled FFmpeg(18815aca)，
+// 经 908592a 升级后两 abi 的 md5 已与 mpv 那份逐字节相同（arm64=4a21dc92、
+// armeabi=181f53f3），故 excludes 不再是为解决 md5 冲突，而是杜绝重复拷贝与
+// 符号歧义、避免 x86_64 转译运行时 libmpv.so dlopen 到不同源副本闪崩。
+// libffmpegJNI.so 仍保留，它运行期动态链接外部 libav*（DT_NEEDED: libavcodec/
+// libavutil/libswresample/libavformat）。
 //
-// 此改动只影响 mytv 消费方（去重冲突），不影响 fork 自身构建 —— CMake 编译时
+// 此改动只影响 mytv 消费方（去重），不影响 fork 自身构建 —— CMake 编译时
 // 仍按 IMPORTED 引用 jniLibs 源里的 .so，packaging excludes 仅在 AAR 打包阶段生效。
 android.packaging.jniLibs.excludes += setOf(
     "**/libavcodec.so",
