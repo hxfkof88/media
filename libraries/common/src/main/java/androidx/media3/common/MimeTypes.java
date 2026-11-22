@@ -53,6 +53,21 @@ public final class MimeTypes {
   @UnstableApi public static final String VIDEO_VP9 = BASE_TYPE_VIDEO + "/x-vnd.on2.vp9";
   public static final String VIDEO_AV1 = BASE_TYPE_VIDEO + "/av01";
   public static final String VIDEO_MP2T = BASE_TYPE_VIDEO + "/mp2t";
+  /**
+   * AVS1（GB/T 20090.2）视频，含广电 AVS+（AVS1-P16 / Guangdian profile）。
+   *
+   * <p>该 MIME 串不是 Android 标准常量（{@code MediaFormat} 直到很晚版本都没有 AVS1 的定义），
+   * 但部分中国电视芯片固件（如 MStar/MTK 的 {@code OMX.MS.AVS.Decoder}）会在
+   * {@code media_codecs.xml} 里以 {@code video/avs} 注册硬解组件，因此按此字面量传递即可命中。
+   */
+  @UnstableApi public static final String VIDEO_AVS = BASE_TYPE_VIDEO + "/avs";
+  /**
+   * AVS2（GB/T 33475.2）视频。
+   *
+   * <p>与 {@link #VIDEO_AVS} 一样不是 Android 标准常量，但中国电视芯片固件常以
+   * {@code video/avs2} 注册硬解组件（如 MStar 的 {@code OMX.MS.AVS2.Decoder}）。
+   */
+  @UnstableApi public static final String VIDEO_AVS2 = BASE_TYPE_VIDEO + "/avs2";
   @UnstableApi public static final String VIDEO_MMT_TLV = BASE_TYPE_VIDEO + "/mmt-tlv";
   public static final String VIDEO_MP4V = BASE_TYPE_VIDEO + "/mp4v-es";
   public static final String VIDEO_MPEG = BASE_TYPE_VIDEO + "/mpeg";

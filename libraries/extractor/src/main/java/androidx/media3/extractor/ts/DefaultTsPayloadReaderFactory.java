@@ -224,6 +224,15 @@ public final class DefaultTsPayloadReaderFactory implements TsPayloadReader.Fact
       case TsExtractor.TS_STREAM_TYPE_AV3A:
         return new PesReader(
             new Av3aReader(esInfo.language, esInfo.getRoleFlags(), MimeTypes.VIDEO_MP2T));
+      case TsExtractor.TS_STREAM_TYPE_AVS:
+        // AVS1 / 广电 AVS+：交给 AvsReader 切帧，样本 MIME 用 video/avs，
+        // 以便命中中国电视芯片固件里注册的 AVS 硬解组件（如 OMX.MS.AVS.Decoder）。
+        return new PesReader(new AvsReader(MimeTypes.VIDEO_MP2T));
+      case TsExtractor.TS_STREAM_TYPE_AVS2:
+      case TsExtractor.TS_STREAM_TYPE_AVS2_ALT:
+        // AVS2：起始码体系与 AVS1 相同，切帧逻辑复用 AvsReader，
+        // 只是样本 MIME 换成 video/avs2 以命中 AVS2 硬解组件。
+        return new PesReader(new AvsReader(MimeTypes.VIDEO_MP2T, MimeTypes.VIDEO_AVS2));
       default:
         return null;
     }

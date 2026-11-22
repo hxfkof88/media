@@ -146,6 +146,24 @@ public final class TsExtractor implements Extractor {
   public static final int TS_STREAM_TYPE_H263 = 0x10; // MPEG-4 Part 2 and H.263
   public static final int TS_STREAM_TYPE_H264 = 0x1B;
   public static final int TS_STREAM_TYPE_H265 = 0x24;
+  /**
+   * AVS1（GB/T 20090.2）视频，广电 AVS+（AVS1-P16）也走这个流类型。
+   *
+   * <p>依据 ISO/IEC 13818-1 的 stream_type 注册（0x42 = AVS video）。
+   */
+  public static final int TS_STREAM_TYPE_AVS = 0x42;
+  /**
+   * AVS2（GB/T 33475.2）视频。
+   *
+   * <p>AVS2 与 AVS1/AVS+ 是两代不同标准，流类型不同：AVS1 用 0x42，AVS2 实测用 0xD2。
+   * 两者起始码体系一致（0xB0/0xB3/0xB6/0xB7），但 sequence_header 字段与解码器完全不同，
+   * 所以要分别映射到不同的 sample MIME，才能命中各自的硬解组件。
+   *
+   * <p>取值依据：海信 VIDAA / MTK9652 实测源的 PMT 为 0xD2（不是部分资料写的 0xD4）。
+   */
+  public static final int TS_STREAM_TYPE_AVS2 = 0xD2;
+  /** 备用 AVS2 流类型：少数前端按 0xD4 下发，一并接住。 */
+  public static final int TS_STREAM_TYPE_AVS2_ALT = 0xD4;
   public static final int TS_STREAM_TYPE_MHAS = 0x2D;
   public static final int TS_STREAM_TYPE_ID3 = 0x15;
   public static final int TS_STREAM_TYPE_SPLICE_INFO = 0x86;
